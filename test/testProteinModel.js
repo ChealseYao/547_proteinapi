@@ -1,4 +1,5 @@
-const { calculateMolecularWeight, gorSecondaryStructure } = require('./models/proteinModel');
+const { calculateMolecularWeight, gorSecondaryStructure } = require('../utils/proteinUtils');
+const Protein = require('../models/proteinModel');
 
 const testSequence = "ACDEFGHIKLMNPQRSTVWY";
 
