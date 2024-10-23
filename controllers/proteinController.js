@@ -4,6 +4,9 @@ const { saveProteinToS3, getProteinFromS3, deleteProteinFromS3 } = require('../u
 const { v4: uuidv4 } = require('uuid');
 const { buildQuery } = require('../utils/queryUtils');
 
+const Fragment = require('../models/fragmentModel');
+const { splitSequenceIntoFragments } = require('../utils/sequenceUtils');
+
 exports.createProtein = async (req, res, next) => {
   const { sequence, name, description, sequenceUrl } = req.body;  
 
@@ -20,6 +23,7 @@ exports.createProtein = async (req, res, next) => {
     name: name || `Protein ${sequence.slice(0, 8)}`,
     sequence: sequence.toUpperCase(),
     molecularWeight,
+    sequenceLength: sequence.length,  
     description: description || '',
     sequenceUrl 
   });
@@ -30,18 +34,19 @@ exports.createProtein = async (req, res, next) => {
     const response = {
       metadata: {
         version: '1.0',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
+        createdAt: savedProtein.createdAt.toISOString(),  
+        updatedAt: savedProtein.updatedAt.toISOString()   
       },
       data: {
-        id: savedProtein._id,
+        proteinId: savedProtein._id.toString(), 
         name: savedProtein.name,
         sequence: savedProtein.sequence,
         molecularWeight: savedProtein.molecularWeight,
+        sequenceLength: savedProtein.sequenceLength,  
         description: savedProtein.description,
         sequenceUrl: savedProtein.sequenceUrl, 
-        createdAt: savedProtein.createdAt,
-        updatedAt: savedProtein.updatedAt
+        createdAt: savedProtein.createdAt.toISOString(), 
+        updatedAt: savedProtein.updatedAt.toISOString()  
       }
     };
 
@@ -52,11 +57,21 @@ exports.createProtein = async (req, res, next) => {
   }
 };
 
-
 exports.getAllProteins = async (req, res, next) => {
   try {
     const proteins = await Protein.find({});
-    res.json(proteins);
+    const response = proteins.map(protein => ({
+      proteinId: protein._id.toString(),  
+      name: protein.name,
+      sequence: protein.sequence,
+      molecularWeight: protein.molecularWeight,
+      sequenceLength: protein.sequenceLength, 
+      description: protein.description,
+      sequenceUrl: protein.sequenceUrl,
+      createdAt: protein.createdAt.toISOString(), 
+      updatedAt: protein.updatedAt.toISOString()   
+    }));
+    res.status(200).json(response);
   } catch (error) {
     console.error('Error in getAllProteins:', error);
     next(error);
@@ -71,7 +86,27 @@ exports.getProteinById = async (req, res, next) => {
       return res.status(404).json({ error: `Protein with id ${proteinId} not found` });
     }
     const sequence = await getProteinFromS3(proteinId); 
-    res.json({ ...protein._doc, sequence });
+
+    const response = {
+      metadata: {
+        version: '1.0',
+        createdAt: protein.createdAt.toISOString(), 
+        updatedAt: protein.updatedAt.toISOString()  
+      },
+      data: {
+        proteinId: protein._id.toString(),  
+        name: protein.name,
+        sequence: sequence,  
+        molecularWeight: protein.molecularWeight,
+        sequenceLength: protein.sequenceLength, 
+        description: protein.description,
+        sequenceUrl: protein.sequenceUrl,
+        createdAt: protein.createdAt.toISOString(), 
+        updatedAt: protein.updatedAt.toISOString()   
+      }
+    };
+
+    res.status(200).json(response);
   } catch (error) {
     console.error('Error in getProteinById:', error);
     next(error);
@@ -101,8 +136,28 @@ exports.updateProtein = async (req, res, next) => {
 
     if (name) protein.name = name;
     if (description) protein.description = description;
-    await protein.save(); 
-    res.json(protein);
+    await protein.save();
+
+    const response = {
+      metadata: {
+        version: '1.0',
+        createdAt: protein.createdAt.toISOString(),
+        updatedAt: protein.updatedAt.toISOString()
+      },
+      data: {
+        proteinId: protein._id.toString(),
+        name: protein.name,
+        sequence: protein.sequence,
+        molecularWeight: protein.molecularWeight,
+        sequenceLength: protein.sequenceLength,
+        description: protein.description,
+        sequenceUrl: protein.sequenceUrl,
+        createdAt: protein.createdAt.toISOString(),
+        updatedAt: protein.updatedAt.toISOString()
+      }
+    };
+
+    res.status(200).json(response);
   } catch (error) {
     console.error('Error in updateProtein:', error);
     next(error);
@@ -111,11 +166,60 @@ exports.updateProtein = async (req, res, next) => {
 
 exports.searchProteins = async (req, res, next) => {
   try {
-      const query = buildQuery(req.query); 
-      const proteins = await Protein.find(query);  
-      res.json(proteins);
+    const query = buildQuery(req.query); 
+    const proteins = await Protein.find(query);
+
+    const response = proteins.map(protein => ({
+      proteinId: protein._id.toString(),
+      name: protein.name,
+      sequence: protein.sequence,
+      molecularWeight: protein.molecularWeight,
+      sequenceLength: protein.sequenceLength,
+      description: protein.description,
+      sequenceUrl: protein.sequenceUrl,
+      createdAt: protein.createdAt.toISOString(),
+      updatedAt: protein.updatedAt.toISOString()
+    }));
+
+    res.status(200).json(response);
   } catch (error) {
-      console.error('Error in searchProteins:', error);
-      next(error);
+    console.error('Error in searchProteins:', error);
+    next(error);
   }
 };
+
+exports.createFragmentsForProtein = async (req, res, next) => {
+  const { proteinId, fragmentSize } = req.body;
+
+  try {
+    const protein = await Protein.findById(proteinId);
+    if (!protein) {
+      return res.status(404).send('Protein not found');
+    }
+
+    const fragments = splitSequenceIntoFragments(protein.sequence, fragmentSize);
+    const fragmentObjects = fragments.map((seq, index) => ({
+      proteinId,
+      sequence: seq,
+      startPosition: index * fragmentSize,
+      endPosition: (index + 1) * fragmentSize - 1,
+    }));
+
+    await Fragment.insertMany(fragmentObjects);
+    res.status(201).send('Fragments created successfully');
+  } catch (error) {
+    console.error('Error creating fragments:', error);
+    next(error);
+  }
+};
+
+exports.getFragmentsByProteinId = async (req, res, next) => {
+  try {
+    const fragments = await Fragment.find({ proteinId: req.params.proteinId });
+    res.json(fragments);
+  } catch (error) {
+    console.error('Error retrieving fragments:', error);
+    next(error);
+  }
+};
+

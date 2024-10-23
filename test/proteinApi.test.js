@@ -25,9 +25,9 @@ describe('Protein API Tests', () => {
       sequence: 'ACDEFGHIKLMNPQRSTVWY',
       sequenceUrl: 'https://example.com/protein1'  
     });
-    
+
     expect(res.status).toBe(201);
-    expect(res.body.data.name).toBe('Test Protein');
+    expect(res.body.data.name).toBe('Test Protein'); 
   });
 
   it('should get all proteins', async () => {
@@ -43,16 +43,14 @@ describe('Protein API Tests', () => {
       sequenceUrl: 'https://example.com/protein2'
     });
 
-    const proteinId = createRes.body.data.id;
+    const proteinId = createRes.body.data.proteinId;  
 
     const res = await supertest(app).get(`/api/proteins/${proteinId}`);
     expect(res.status).toBe(200);
 
-    expect(res.body.name).toBe('Test Protein');
-    expect(res.body.sequenceUrl).toBe('https://example.com/protein2');
-});
-
-
+    expect(res.body.data.name).toBe('Test Protein');  
+    expect(res.body.data.sequenceUrl).toBe('https://example.com/protein2');
+  });
 
   it('should delete a protein by ID', async () => {
     const createRes = await supertest(app).post('/api/proteins').send({
@@ -61,7 +59,7 @@ describe('Protein API Tests', () => {
       sequenceUrl: 'https://example.com/protein3'
     });
 
-    const proteinId = createRes.body.data.id;
+    const proteinId = createRes.body.data.proteinId;  
     const deleteRes = await supertest(app).delete(`/api/proteins/${proteinId}`);
     expect(deleteRes.status).toBe(204);
   });
